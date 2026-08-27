@@ -1,3 +1,30 @@
+> **Downstream fork notice**
+>
+> This repository is a downstream fork of [noVNC](https://github.com/novnc/noVNC), published to fulfil the
+> source-availability obligations of the Mozilla Public License 2.0 for files modified by the ArkClaw product
+> (Volcano Engine). It is a snapshot based on upstream v1.6.0 and is provided as-is: no feature development,
+> support, or maintenance is planned in this repository. Unless you specifically need the adaptations listed
+> below, please use the upstream project instead.
+
+### Changes relative to upstream v1.6.0
+
+| Path | Upstream license | Change |
+| ---- | ---------------- | ------ |
+| `core/input/keyboard.js` | MPL-2.0 | On macOS/iOS, map Cmd (Super) to Ctrl instead of Alt and keep Alt as Alt, so common shortcuts (Cmd+A/C/V/X/Z) reach the remote session as Ctrl combinations. |
+| `core/rfb.js` | MPL-2.0 | Request a fixed 1920x1080 remote resolution (also in view-only mode) and rescale the local viewport afterwards; change the default canvas background color. |
+| `app/ui.js` | MPL-2.0 | Add a postMessage bridge to the embedding host page (connection state events, clipboard synchronization, paste handling, view-only toggle); honor a `lang` URL parameter; always enable viewport scaling. |
+| `vnc.html` | BSD-2-Clause | Hide the control bar; filter uncaught errors injected by browser extensions; listen for host page messages. |
+| `app/styles/base.css` | BSD-2-Clause | Theme color adjustments; reference the loading indicator asset below. |
+| `app/images/loading.svg` | added | Loading indicator asset. |
+| `SECURITY.md` | added | Security policy for this fork. |
+| `.github/workflows/` | removed | Upstream build, test and release pipelines, which do not apply to a snapshot that is not developed here. |
+
+Changes are kept minimal and local: the modified files otherwise retain upstream formatting, so a diff
+against upstream v1.6.0 shows only the adaptations listed above. All upstream copyright and license headers,
+`LICENSE.txt`, and the license texts under `docs/` are preserved unchanged.
+
+---
+
 ## noVNC: HTML VNC client library and application
 
 [![Test Status](https://github.com/novnc/noVNC/workflows/Test/badge.svg)](https://github.com/novnc/noVNC/actions?query=workflow%3ATest)

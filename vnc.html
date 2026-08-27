@@ -23,6 +23,12 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 
+    <style>
+        #noVNC_control_bar {
+            display: none;
+        }
+    </style>
+
     <!-- @2x -->
     <link rel="apple-touch-icon" sizes="40x40" type="image/png" href="app/images/icons/novnc-ios-40.png">
     <link rel="apple-touch-icon" sizes="58x58" type="image/png" href="app/images/icons/novnc-ios-58.png">
@@ -45,6 +51,40 @@
     <link rel="preload" as="image" href="app/images/info.svg">
     <link rel="preload" as="image" href="app/images/error.svg">
     <link rel="preload" as="image" href="app/images/warning.svg">
+
+    <!--
+      过滤来自浏览器扩展（Tampermonkey 等）注入脚本的未捕获错误，
+      避免被下方 noVNC 全局兜底（app/error-handler.js）渲染成全屏错误面板，
+      遮住 VNC 画面、剥夺键盘焦点。capture 阶段注册保证先于 error-handler.js
+      的 bubble 监听执行。仅过滤来源明确为扩展协议的错误，不影响 noVNC 自身错误展示。
+    -->
+    <script>
+        (function () {
+            function isExtensionError(filename, stack) {
+                var pattern = /(chrome-extension|moz-extension|safari-web-extension):\/\//;
+                if (typeof filename === 'string' && pattern.test(filename)) {
+                    return true;
+                }
+                if (typeof stack === 'string' && pattern.test(stack)) {
+                    return true;
+                }
+                return false;
+            }
+            window.addEventListener('error', function (evt) {
+                if (isExtensionError(evt.filename, evt.error && evt.error.stack)) {
+                    evt.stopImmediatePropagation();
+                    evt.preventDefault();
+                }
+            }, true);
+            window.addEventListener('unhandledrejection', function (evt) {
+                var reason = evt.reason || {};
+                if (isExtensionError(reason.fileName, reason.stack)) {
+                    evt.stopImmediatePropagation();
+                    evt.preventDefault();
+                }
+            }, true);
+        })();
+    </script>
 
     <script type="module" crossorigin="anonymous" src="app/error-handler.js"></script>
 
@@ -96,6 +136,18 @@
 
         UI.start({ settings: { defaults: defaults,
                                mandatory: mandatory } });
+
+        // 监听来自父窗口的消息
+        window.addEventListener('message', (event) => {
+            // 检查指令
+            if (event.data && event.data.action === 'set_view_only') {
+                // 核心：修改 noVNC 的 rfb 实例属性
+                if (UI.rfb) {
+                    UI.rfb.viewOnly = event.data.value;
+                    // console.log("ViewOnly 状态已更新:", event.data.value);
+                }
+            }
+        }, false);
     </script>
 </head>
 
@@ -337,7 +389,7 @@
     <div class="noVNC_center">
         <div id="noVNC_connect_dlg">
             <p class="noVNC_logo" translate="no"><span>no</span>VNC</p>
-            <div>
+            <div style="display: none">
                 <button id="noVNC_connect_button">
                     <img alt="" src="app/images/connect.svg"> Connect
                 </button>
@@ -391,11 +443,11 @@
 
     <!-- Transition screens -->
     <div id="noVNC_transition">
+        <div class="noVNC_spinner"></div>
         <div id="noVNC_transition_text"></div>
         <div>
         <input type="button" id="noVNC_cancel_reconnect_button" value="Cancel">
         </div>
-        <div class="noVNC_spinner"></div>
     </div>
 
     <!-- This is where the RFB elements will attach -->

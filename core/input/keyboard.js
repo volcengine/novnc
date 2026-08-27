@@ -135,23 +135,22 @@ export default class Keyboard {
             return;
         }
 
-        // Alt behaves more like AltGraph on macOS, so shuffle the
-        // keys around a bit to make things more sane for the remote
-        // server. This method is used by RealVNC and TigerVNC (and
-        // possibly others).
+        // 云浏览器场景：将 Cmd 映射为 Ctrl（而非原始的 Alt）
+        // 这样 macOS 上 Cmd+A/C/V/X/Z 等会映射为远程的 Ctrl+对应键
+        // noVNC 默认映射 Cmd→Alt 是为了标准 VNC Alt 键支持，但云浏览器更需要 Ctrl
         if (browser.isMac() || browser.isIOS()) {
             switch (keysym) {
                 case KeyTable.XK_Super_L:
-                    keysym = KeyTable.XK_Alt_L;
+                    keysym = KeyTable.XK_Control_L;
                     break;
                 case KeyTable.XK_Super_R:
-                    keysym = KeyTable.XK_Super_L;
+                    keysym = KeyTable.XK_Control_R;
                     break;
                 case KeyTable.XK_Alt_L:
-                    keysym = KeyTable.XK_Mode_switch;
+                    keysym = KeyTable.XK_Alt_L; // 保持不变
                     break;
                 case KeyTable.XK_Alt_R:
-                    keysym = KeyTable.XK_ISO_Level3_Shift;
+                    keysym = KeyTable.XK_Alt_R; // 保持不变
                     break;
             }
         }

@@ -38,9 +38,21 @@ import ZRLEDecoder from "./decoders/zrle.js";
 import JPEGDecoder from "./decoders/jpeg.js";
 import H264Decoder from "./decoders/h264.js";
 
+/**
+ * 将数值限制在指定范围内
+ * @param {number} value - 要限制的数值
+ * @param {number} min - 最小值
+ * @param {number} max - 最大值
+ * @returns {number} 限制后的数值
+ */
+function clamp(value, min, max) {
+    return Math.min(Math.max(value, min), max);
+}
+
 // How many seconds to wait for a disconnect to finish
 const DISCONNECT_TIMEOUT = 3;
-const DEFAULT_BACKGROUND = 'rgb(40, 40, 40)';
+// const DEFAULT_BACKGROUND = "rgb(40, 40, 40)";
+const DEFAULT_BACKGROUND = '#FAFBFC';
 
 // Minimum wait (ms) between two mouse moves
 const MOUSE_MOVE_DELAY = 17;
@@ -787,15 +799,40 @@ export default class RFB extends EventTargetMixin {
         this._fixScrollbars();
     }
 
+    _transformSize(viewWidth, viewHeight) {
+        return { width: 1920, height: 1080 };
+
+        // // const pixelDensity = 1.3;
+        // const MIN_WIDTH = 1024;
+        // const MIN_HEIGHT = 768;
+        // const MAX_WIDTH = 2560;
+        // const MAX_HEIGHT = 1536;
+
+        // const fitWidth = clamp(viewWidth, MIN_WIDTH, MAX_WIDTH);
+        // const fitHeight = clamp(viewHeight, MIN_HEIGHT, MAX_HEIGHT);
+        // const widthScale = fitWidth / viewWidth;
+        // const heightScale = fitHeight / viewHeight;
+        // let scale = 1;
+        // if (widthScale <= 1 && heightScale <= 1) {
+        //     scale = Math.min(widthScale, heightScale);
+        // } else if (widthScale >= 1 && heightScale >= 1) {
+        //     scale = Math.max(widthScale, heightScale);
+        // } else {
+        //     scale = Math.min(widthScale, heightScale);
+        // }
+        // const width = Math.round(clamp(viewWidth * scale, MIN_WIDTH, MAX_WIDTH));
+        // const height = Math.round(clamp(viewHeight * scale, MIN_HEIGHT, MAX_HEIGHT));
+        // return { width, height };
+    }
+
     // Requests a change of remote desktop size. This message is an extension
     // and may only be sent if we have received an ExtendedDesktopSize message
     _requestRemoteResize() {
         if (!this._resizeSession) {
             return;
         }
-        if (this._viewOnly) {
-            return;
-        }
+        // 注意：此处不检查 viewOnly，分辨率调整不属于交互操作，
+        // view-only 模式（非接管状态）下也应能请求远程分辨率为 1920x1080。
         if (!this._supportsSetDesktopSize) {
             return;
         }
@@ -815,20 +852,25 @@ export default class RFB extends EventTargetMixin {
         this._resizeTimeout = null;
 
         const size = this._screenSize();
+        const { width, height } = this._transformSize(size.w, size.h);
 
-        // Do we actually change anything?
-        if (size.w === this._fbWidth && size.h === this._fbHeight) {
+        // 用 transformSize 后的目标尺寸与当前 framebuffer 对比，
+        // 避免发送冗余请求，也避免因容器尺寸碰巧等于 framebuffer 而跳过必要的请求
+        if (width === this._fbWidth && height === this._fbHeight) {
             return;
         }
 
         this._pendingRemoteResize = true;
         this._lastResize = Date.now();
-        RFB.messages.setDesktopSize(this._sock,
-                                    Math.floor(size.w), Math.floor(size.h),
+        RFB.messages.setDesktopSize(this._sock, width, height,
                                     this._screenID, this._screenFlags);
 
+        setTimeout(() => {
+            this._updateScale();
+        }, 1000);
+
         Log.Debug('Requested new desktop size: ' +
-                   size.w + 'x' + size.h);
+                   width + 'x' + height);
     }
 
     // Gets the the size of the available screen

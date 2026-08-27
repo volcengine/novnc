@@ -56,8 +56,26 @@ const UI = {
         }
 
         // Set up translations
+        // 优先读取 URL 中的 lang 参数，允许外层应用强制指定语言
+        // 例如：vnc.html?lang=en 强制英文，vnc.html?lang=zh_CN 使用中文
+        const urlLang = new URLSearchParams(window.location.search).get('lang');
         try {
             await l10n.setup(LINGUAS, "app/locale/");
+            if (urlLang) {
+                // 如果 URL 中指定了语言，覆盖 navigator.languages 自动检测的结果
+                if (urlLang === 'en' || !LINGUAS.includes(urlLang)) {
+                    // 英文或不支持的语言：清空字典，使用英文原文
+                    l10n.language = 'en';
+                    l10n._dictionary = undefined;
+                } else if (l10n.language !== urlLang) {
+                    // 重新加载对应语言的字典
+                    l10n.language = urlLang;
+                    const response = await fetch('app/locale/' + urlLang + '.json');
+                    if (response.ok) {
+                        l10n._dictionary = await response.json();
+                    }
+                }
+            }
         } catch (err) {
             Log.Error("Failed to load translations: " + err);
         }
@@ -414,6 +432,10 @@ const UI = {
                 document.documentElement.classList.add("noVNC_connecting");
                 break;
             case 'connected':
+                // document.documentElement.classList.add("noVNC_connecting");
+                // setTimeout(() => {
+                //     document.documentElement.classList.remove("noVNC_connecting");
+                // }, 500)
                 document.documentElement.classList.add("noVNC_connected");
                 break;
             case 'disconnecting':
@@ -997,6 +1019,14 @@ const UI = {
     clipboardReceive(e) {
         Log.Debug(">> UI.clipboardReceive: " + e.detail.text.substr(0, 40) + "...");
         document.getElementById('noVNC_clipboard_text').value = e.detail.text;
+        // 将远程剪贴板内容通知父窗口
+        window.parent.postMessage({ action: 'clipboard_receive', text: e.detail.text }, '*');
+        // 自动同步远程剪贴板到本地剪贴板
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(e.detail.text).catch(function (err) {
+                Log.Warn('Clipboard writeText failed: ' + err);
+            });
+        }
         Log.Debug("<< UI.clipboardReceive");
     },
 
@@ -1082,6 +1112,8 @@ const UI = {
             Log.Error("Failed to connect to server: " + exc);
             UI.updateVisualState('disconnected');
             UI.showStatus(_("Failed to connect to server: ") + exc, 'error');
+            // 通知父窗口连接失败
+            window.parent.postMessage({ action: 'UI_CONNECT_FAILED', message: 'Failed to connect to server: ' + exc }, '*');
             return;
         }
 
@@ -1096,7 +1128,8 @@ const UI = {
         UI.rfb.addEventListener("bell", UI.bell);
         UI.rfb.addEventListener("desktopname", UI.updateDesktopName);
         UI.rfb.clipViewport = UI.getSetting('view_clip');
-        UI.rfb.scaleViewport = UI.getSetting('resize') === 'scale';
+        // UI.rfb.scaleViewport = UI.getSetting('resize') === 'scale';
+        UI.rfb.scaleViewport = true;
         UI.rfb.resizeSession = UI.getSetting('resize') === 'remote';
         UI.rfb.qualityLevel = parseInt(UI.getSetting('quality'));
         UI.rfb.compressionLevel = parseInt(UI.getSetting('compression'));
@@ -1154,6 +1187,100 @@ const UI = {
         UI.showStatus(msg);
         UI.updateVisualState('connected');
 
+        window.parent.postMessage({ action: 'UI_CONNECT_FINISHED' }, '*');
+
+        // === 粘贴相关共享状态 ===
+        var _pasteHandled = false;
+        // 发送完整的 Ctrl+V 组合键，而不是只发 V 键。
+        // 原因：keydown 拦截器通过 stopPropagation 阻止了 V 键到达 canvas 键盘处理器，
+        // 但 Ctrl 键已经被正常发送到远程。由于 _doSendV 会延迟 200-300ms 执行，
+        // 此时用户通常已松开 Ctrl/Cmd，远程已收到 Ctrl 释放事件。
+        // 如果只发 V 键，远程会将其视为普通字符而非粘贴操作。
+        var _doSendV = function () {
+            if (!UI.rfb) return;
+            UI.rfb.sendKey(0xffe3, 'ControlLeft', true);
+            UI.rfb.sendKey(0x0076, 'KeyV', true);
+            UI.rfb.sendKey(0x0076, 'KeyV', false);
+            UI.rfb.sendKey(0xffe3, 'ControlLeft', false);
+        };
+
+        // 监听来自父窗口的 postMessage 指令（剪贴板、viewOnly 等）
+        window.addEventListener('message', function (event) {
+            var data = event.data;
+            if (!data || !data.action) return;
+            // 父页面发送文本到远程剪贴板
+            if (data.action === 'clipboard_paste' && UI.rfb) {
+                UI.rfb.clipboardPasteFrom(data.text || '');
+            }
+            // 父页面切换 viewOnly 模式
+            if (data.action === 'set_view_only' && UI.rfb) {
+                UI.rfb.viewOnly = data.value;
+            }
+            // 父页面响应剪切板请求（与 paste 事件竞争，先到先用）
+            if (data.action === 'clipboard_response' && UI.rfb) {
+                if (_pasteHandled) return; // paste 事件已处理，跳过
+                _pasteHandled = true;
+                if (data.text) {
+                    UI.rfb.clipboardPasteFrom(data.text);
+                }
+                setTimeout(_doSendV, 200);
+            }
+        }, false);
+
+        // === Cmd/Ctrl+V 粘贴处理 ===
+        // 双路径并行：paste 事件 + clipboard_request，哪个先完成用哪个。
+        // paste 事件在 canvas 上不可靠（尤其 Ctrl+A 后），所以同时请求父窗口代读。
+
+        document.addEventListener('keydown', function (event) {
+            if (!UI.rfb || UI.rfb.viewOnly) return;
+            var key = event.key && event.key.toLowerCase();
+            if ((event.ctrlKey || event.metaKey) && key === 'v') {
+                event.stopPropagation();
+                _pasteHandled = false;
+
+                // 路径 A：立即请求父窗口代读剪切板（不依赖 paste 事件）
+                window.parent.postMessage({ action: 'clipboard_request' }, '*');
+
+                // 路径 B（兜底）：如果 300ms 内 paste 事件和 clipboard_response 都未触发，
+                // 直接发 V 键（使用远程已有的剪切板内容）
+                setTimeout(function () {
+                    if (_pasteHandled) return;
+                    _pasteHandled = true;
+                    _doSendV();
+                }, 300);
+            }
+        }, true);
+
+        // paste 事件：路径 B（如果浏览器触发了 paste，直接用 clipboardData）
+        document.addEventListener('paste', function (event) {
+            if (!UI.rfb || UI.rfb.viewOnly) return;
+            if (_pasteHandled) return;
+            _pasteHandled = true;
+            event.preventDefault();
+            var text = event.clipboardData && event.clipboardData.getData('text');
+            if (text) {
+                UI.rfb.clipboardPasteFrom(text);
+            }
+            setTimeout(_doSendV, 200);
+        }, false);
+
+        // iframe 内部直接监听 copy 事件：将远程剪贴板内容写入本地剪贴板
+        document.addEventListener('copy', function (event) {
+            var clipboardText = document.getElementById('noVNC_clipboard_text');
+            if (clipboardText && clipboardText.value && event.clipboardData) {
+                event.clipboardData.setData('text/plain', clipboardText.value);
+                event.preventDefault();
+            }
+        }, false);
+
+        // 监听 capabilities 事件：ExtendedDesktopSize 协商完成后主动触发分辨率请求
+        UI.rfb.addEventListener('capabilities', function onCaps() {
+            if (UI.rfb && UI.rfb._supportsSetDesktopSize) {
+                UI.rfb._requestRemoteResize();
+                UI.rfb.removeEventListener('capabilities', onCaps);
+            }
+        });
+
         // Do this last because it can only be used on rendered elements
         UI.rfb.focus();
     },
@@ -1174,8 +1301,12 @@ const UI = {
             if (wasConnected) {
                 UI.showStatus(_("Something went wrong, connection is closed"),
                               'error');
+                // 通知父窗口连接异常断开
+                window.parent.postMessage({ action: 'UI_DISCONNECT', message: 'Something went wrong, connection is closed' }, '*');
             } else {
                 UI.showStatus(_("Failed to connect to server"), 'error');
+                // 通知父窗口连接失败
+                window.parent.postMessage({ action: 'UI_CONNECT_FAILED', message: 'Failed to connect to server' }, '*');
             }
         }
         // If reconnecting is allowed process it now
@@ -1208,6 +1339,8 @@ const UI = {
             msg = _("New connection has been rejected");
         }
         UI.showStatus(msg, 'error');
+        // 通知父窗口安全验证失败
+        window.parent.postMessage({ action: 'UI_CONNECT_FAILED', message: msg }, '*');
     },
 
 /* ------^-------

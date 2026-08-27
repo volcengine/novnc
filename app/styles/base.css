@@ -63,33 +63,17 @@ html {
  */
 
 .noVNC_spinner {
-    position: relative;
-}
-.noVNC_spinner, .noVNC_spinner::before, .noVNC_spinner::after {
-    width: 10px;
-    height: 10px;
-    border-radius: 2px;
-    box-shadow: -60px 10px 0 rgba(255, 255, 255, 0);
+    width: 40px;
+    height: 40px;
+    background: url('../images/loading.svg') no-repeat center center;
+    background-size: contain;
     animation: noVNC_spinner 1.0s linear infinite;
+    margin-bottom: 8px; /* Space between spinner and text */
 }
-.noVNC_spinner::before {
-    content: "";
-    position: absolute;
-    left: 0px;
-    top: 0px;
-    animation-delay: -0.1s;
-}
-.noVNC_spinner::after {
-    content: "";
-    position: absolute;
-    top: 0px;
-    left: 0px;
-    animation-delay: 0.1s;
-}
+
 @keyframes noVNC_spinner {
-    0% { box-shadow: -60px 10px 0 rgba(255, 255, 255, 0); width: 20px; }
-    25% { box-shadow: 20px 10px 0 rgba(255, 255, 255, 1); width: 10px; }
-    50% { box-shadow: 60px 10px 0 rgba(255, 255, 255, 0); width: 10px; }
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
 }
 
 /* ----------------------------------------
@@ -173,7 +157,7 @@ html {
 
     text-align: center;
     font-weight: bold;
-    color: #fff;
+    color: var(--color-white);
 
     border-radius: 12px;
     box-shadow: 6px 6px 0px rgba(0, 0, 0, 0.5);
@@ -420,9 +404,9 @@ html {
 
     padding: 15px;
 
-    background: #fff;
+    background: var(--color-bg-1);
     border-radius: 12px;
-    color: #000;
+    color: var(--color-black);
     border: 2px solid #E0E0E0;
     box-shadow: 6px 6px 0px rgba(0, 0, 0, 0.5);
 }
@@ -473,15 +457,6 @@ html {
 
 .noVNC_panel li {
     margin: 5px;
-}
-
-.noVNC_panel button,
-.noVNC_panel select,
-.noVNC_panel textarea,
-.noVNC_panel input:not([type=checkbox]):not([type=radio]) {
-    margin-left: 6px;
-    /* Prevent inputs in panels from being too wide */
-    max-width: calc(100% - 6px - var(--input-xpadding) * 2);
 }
 
 .noVNC_panel .noVNC_heading {
@@ -621,6 +596,15 @@ html {
     list-style: none;
     padding: 0px;
 }
+#noVNC_settings button,
+#noVNC_settings select,
+#noVNC_settings textarea,
+#noVNC_settings input:not([type=checkbox]):not([type=radio]) {
+    margin-left: 6px;
+    /* Prevent inputs in settings from being too wide */
+    max-width: calc(100% - 6px - var(--input-xpadding) * 2);
+}
+
 #noVNC_setting_port {
     width: 80px;
 }
@@ -665,14 +649,15 @@ html {
 
     padding: 5px;
 
-    display: flex;
+    /* display: flex; */
+    display: none !important;
     flex-direction: row;
     justify-content: center;
     align-content: center;
 
     line-height: 1.6;
     word-wrap: break-word;
-    color: #fff;
+    color: var(--color-white);
 
     border-bottom: 1px solid rgba(0, 0, 0, 0.9);
 }
@@ -829,8 +814,7 @@ html {
     bottom: 0;
     right: 0;
 
-    color: white;
-    background: rgba(0, 0, 0, 0.5);
+    background: #FAFBFC;
     z-index: 50;
 
     /*display: flex;*/
@@ -849,7 +833,8 @@ html {
     display: none;
 }
 #noVNC_transition_text {
-    font-size: 1.5em;
+    font-size: 13px;
+    color: var(--color-text-2);
 }
 
 /* Main container */
@@ -870,8 +855,8 @@ html {
 #noVNC_keyboardinput {
     width: 1px;
     height: 1px;
-    background-color: #fff;
-    color: #fff;
+    background-color: var(--color-bg-1);
+    color: var(--color-white);
     border: 0;
     position: absolute;
     left: -40px;
